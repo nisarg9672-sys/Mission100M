@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "functions": {
+    "api/trading.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "ALPACA_API_KEY_ID": "PKFAQKMHWBF879LZNSKC",
+    "ALPACA_SECRET_KEY": "TyXUbvXycrGV2LI5TeB88rgGQfHm2HwbfshI9Z7o",
+    "ALPACA_PAPER": "true"
+    
+  },
+  "build": {
+    "env": {
+      "ALPACA_API_KEY_ID": "PKFAQKMHWBF879LZNSKC",
+      "ALPACA_SECRET_KEY": "TyXUbvXycrGV2LI5TeB88rgGQfHm2HwbfshI9Z7o",
+      "ALPACA_PAPER": "true"
+      
+    }
+  }
+}
