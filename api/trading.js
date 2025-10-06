@@ -2,10 +2,10 @@
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
-import { createLogger } from '../lib/logger.js';
+import { Logger } from '../lib/logger.js';
 import { randomUUID } from 'crypto';
 
-const logger = createLogger('Trading');
+const logger = Logger('Trading');
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
