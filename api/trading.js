@@ -2,14 +2,13 @@
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
-import { Logger } from '../lib/logger.js';
+import logger from '../lib/logger.js'; // Import default export (logger instance)
 import { randomUUID } from 'crypto';
-
-const logger = Logger('Trading');
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
   const startTime = Date.now();
+
   logger.info('Request received', { requestId, method: req.method, url: req.url });
 
   // CORS
@@ -40,12 +39,14 @@ export default async function handler(req, res) {
     const indicators = new TechnicalIndicators();
     const technicals = indicators.calculate(historicalData);
     const signals = indicators.generateSignals(technicals, yahooData.price);
+
     logger.info('Technical analysis complete', { requestId, signals });
 
     // Analysis-only response
     if (action === 'analyze') {
       const duration = Date.now() - startTime;
       logger.info('Responding to analysis request', { requestId, durationMs: duration });
+
       return res.json({
         success: true,
         requestId,
@@ -57,6 +58,7 @@ export default async function handler(req, res) {
     // Trade action
     if (action === 'trade' && req.method === 'POST') {
       const { side = 'buy', qty = 1, type = 'market', tif = 'day' } = req.body;
+
       if (!['buy', 'sell'].includes(side.toLowerCase())) {
         logger.warn('Invalid trade side', { requestId, side });
         return res.status(400).json({ success: false, requestId, error: 'Invalid side' });
@@ -70,6 +72,7 @@ export default async function handler(req, res) {
         tif: tif.toLowerCase(),
         confirm: req.headers.confirm === 'true'
       };
+
       logger.info('Placing order', { requestId, orderParams });
 
       const orderResult = await placeAlpacaOrder(orderParams);
@@ -102,6 +105,7 @@ export default async function handler(req, res) {
       stack: error.stack,
       durationMs: duration
     });
+
     return res.status(500).json({
       success: false,
       requestId,
