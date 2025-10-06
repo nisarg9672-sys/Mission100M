@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Serverless Trading Automation</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header__content">
+                <h1 class="header__title">🚀 JavaScript Serverless Trading Automation</h1>
+                <p class="header__subtitle">Complete serverless trading bot with Yahoo Finance & Alpaca API on Vercel</p>
+            </div>
+        </div>
+    </header>
+
+    <nav class="nav">
+        <div class="container">
+            <div class="nav__content">
+                <button class="nav__item nav__item--active" data-tab="overview">Overview</button>
+                <button class="nav__item" data-tab="setup">Setup Guide</button>
+                <button class="nav__item" data-tab="code">Code Browser</button>
+                <button class="nav__item" data-tab="testing">Testing</button>
+                <button class="nav__item" data-tab="deployment">Deployment</button>
+                <button class="nav__item" data-tab="monitoring">Monitoring</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main">
+        <div class="container">
+            <!-- Overview Tab -->
+            <section id="overview" class="tab-content tab-content--active">
+                <div class="section">
+                    <h2>🏗️ Project Architecture</h2>
+                    <div class="architecture-diagram">
+                        <img src="https://ppl-ai-code-interpreter-files.s3.amazonaws.com/web/direct-files/897bed5f265e96883588bb395e2fb847/dd06fe13-4d7c-4d57-94a2-67bbc3d312a8/473f4867.png" alt="Trading Automation Architecture" class="diagram-image">
+                    </div>
+                    
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <h3>⚡ Serverless Functions</h3>
+                            <p>Deployed on Vercel with automatic scaling and zero maintenance overhead</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>📊 Market Data</h3>
+                            <p>Real-time data from Yahoo Finance API for ETF ticker ZSP analysis</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>🤖 Automated Trading</h3>
+                            <p>Alpaca API integration with automatic TP/SL orders</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>⏰ FastCron Scheduling</h3>
+                            <p>Configurable intervals (every 15 minutes) with reliable execution</p>
+                        </div>
+                    </div>
+
+                    <div class="tech-stack">
+                        <h3>🛠️ Technology Stack</h3>
+                        <div class="tech-items">
+                            <span class="tech-item">Node.js 18+</span>
+                            <span class="tech-item">Vercel Serverless</span>
+                            <span class="tech-item">Yahoo Finance API</span>
+                            <span class="tech-item">Alpaca API</span>
+                            <span class="tech-item">FastCron</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Setup Guide Tab -->
+            <section id="setup" class="tab-content">
+                <div class="section">
+                    <h2>🔧 Setup & Environment</h2>
+                    
+                    <div class="setup-step">
+                        <h3>Step 1: Development Environment</h3>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#setup-vscode">Copy</button>
+                            <pre id="setup-vscode"><code># Install Visual Studio Code
+# Download from: https://code.visualstudio.com/
+
+# Recommended VS Code Extensions:
+# - JavaScript (ES6) code snippets
+# - Vercel
+# - GitLens
+# - Thunder Client (for API testing)</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <h3>Step 2: GitHub Repository</h3>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#setup-github">Copy</button>
+                            <pre id="setup-github"><code># Create new repository
+git init
+git remote add origin https://github.com/yourusername/serverless-trading-bot.git
+
+# Initial commit
+git add .
+git commit -m "Initial commit: Serverless trading automation setup"
+git push -u origin main</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <h3>Step 3: Vercel Setup</h3>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#setup-vercel">Copy</button>
+                            <pre id="setup-vercel"><code># Install Vercel CLI
+npm i -g vercel
+
+# Login to Vercel
+vercel login
+
+# Link project
+vercel link</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <h3>Step 4: Environment Variables</h3>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#setup-env">Copy</button>
+                            <pre id="setup-env"><code># .env.local (for development)
+ALPACA_API_KEY_ID=your_alpaca_key_id
+ALPACA_SECRET_KEY=your_alpaca_secret_key
+ALPACA_PAPER=true
+WEBHOOK_SECRET=your_webhook_secret
+
+# Set in Vercel dashboard or CLI:
+vercel env add ALPACA_API_KEY_ID
+vercel env add ALPACA_SECRET_KEY
+vercel env add ALPACA_PAPER
+vercel env add WEBHOOK_SECRET</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <h3>Step 5: FastCron Configuration</h3>
+                        <div class="instruction-card">
+                            <ol>
+                                <li>Sign up at <a href="https://www.fastcron.com" target="_blank">FastCron.com</a></li>
+                                <li>Create new cron job with URL: <code>https://your-project.vercel.app/api/trading</code></li>
+                                <li>Set schedule: <code>*/15 * * * *</code> (every 15 minutes)</li>
+                                <li>Add webhook secret header if configured</li>
+                                <li>Enable notifications for failures</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Code Browser Tab -->
+            <section id="code" class="tab-content">
+                <div class="section">
+                    <h2>💻 Code Browser</h2>
+                    
+                    <div class="code-nav">
+                        <button class="code-nav__item code-nav__item--active" data-file="trading">api/trading.js</button>
+                        <button class="code-nav__item" data-file="yahoo">lib/yahooFinance.js</button>
+                        <button class="code-nav__item" data-file="alpaca">lib/alpaca.js</button>
+                        <button class="code-nav__item" data-file="indicators">lib/indicators.js</button>
+                        <button class="code-nav__item" data-file="strategy">lib/strategy.js</button>
+                        <button class="code-nav__item" data-file="storage">lib/storage.js</button>
+                        <button class="code-nav__item" data-file="logger">lib/logger.js</button>
+                        <button class="code-nav__item" data-file="package">package.json</button>
+                        <button class="code-nav__item" data-file="vercel">vercel.json</button>
+                    </div>
+
+                    <!-- Trading.js File -->
+                    <div id="file-trading" class="file-content file-content--active">
+                        <div class="file-header">
+                            <h3>📄 api/trading.js</h3>
+                            <p>Main serverless function endpoint - handles FastCron triggers and executes trading logic</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-trading">Copy</button>
+                            <pre id="code-trading"><code class="language-javascript">const yahooFinance = require('../lib/yahooFinance');
+const alpaca = require('../lib/alpaca');
+const indicators = require('../lib/indicators');
+const strategy = require('../lib/strategy');
+const storage = require('../lib/storage');
+const logger = require('../lib/logger');
+
+export default async function handler(req, res) {
+  try {
+    logger.info('Trading function triggered');
+    
+    // Verify request (optional webhook validation)
+    if (req.headers['user-agent'] && !req.headers['user-agent'].includes('FastCron')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Fetch market data for ZSP ETF
+    const symbol = 'ZSP.TO';
+    const marketData = await yahooFinance.getMarketData(symbol);
+    
+    if (!marketData) {
+      throw new Error('Failed to fetch market data');
+    }
+
+    // Calculate technical indicators
+    const technicalData = await indicators.calculate(marketData);
+    
+    // Get current position
+    const currentPosition = await storage.getCurrentPosition(symbol);
+    
+    // Execute trading strategy
+    const decision = strategy.analyze(technicalData, currentPosition);
+    
+    if (decision.action !== 'HOLD') {
+      // Execute trade via Alpaca
+      const tradeResult = await alpaca.executeTrade({
+        symbol: symbol.replace('.TO', ''), // Convert to US symbol
+        action: decision.action,
+        quantity: decision.quantity,
+        takeProfitPercent: 10,
+        stopLossPercent: 5
+      });
+      
+      // Update position tracking
+      await storage.updatePosition(symbol, tradeResult);
+      
+      logger.info('Trade executed', { decision, tradeResult });
+      
+      return res.status(200).json({
+        success: true,
+        action: decision.action,
+        trade: tradeResult,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    logger.info('No action taken - HOLD');
+    return res.status(200).json({
+      success: true,
+      action: 'HOLD',
+      data: technicalData,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    logger.error('Trading function error', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}</code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Yahoo Finance File -->
+                    <div id="file-yahoo" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 lib/yahooFinance.js</h3>
+                            <p>Yahoo Finance API integration for fetching market data and historical prices</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-yahoo">Copy</button>
+                            <pre id="code-yahoo"><code class="language-javascript">const yahooFinance = require('yahoo-finance2').default;
+
+class YahooFinanceService {
+  async getMarketData(symbol) {
+    try {
+      // Get current quote
+      const quote = await yahooFinance.quote(symbol);
+      
+      // Get historical data for technical analysis
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 100); // 100 days of data
+      
+      const historical = await yahooFinance.historical(symbol, {
+        period1: startDate,
+        period2: endDate,
+        interval: '1d'
+      });
+      
+      return {
+        symbol,
+        currentPrice: quote.regularMarketPrice,
+        previousClose: quote.regularMarketPreviousClose,
+        volume: quote.regularMarketVolume,
+        marketCap: quote.marketCap,
+        historical: historical.map(h => ({
+          date: h.date,
+          open: h.open,
+          high: h.high,
+          low: h.low,
+          close: h.close,
+          volume: h.volume
+        })),
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      throw new Error(`Yahoo Finance API error: ${error.message}`);
+    }
+  }
+}
+
+module.exports = new YahooFinanceService();</code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Alpaca File -->
+                    <div id="file-alpaca" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 lib/alpaca.js</h3>
+                            <p>Alpaca API integration for executing trades with automatic TP/SL orders</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-alpaca">Copy</button>
+                            <pre id="code-alpaca"><code class="language-javascript"></code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Indicators File -->
+                    <div id="file-indicators" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 lib/indicators.js</h3>
+                            <p>Technical indicators calculations including SMA, RSI, MACD, and Bollinger Bands</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-indicators">Copy</button>
+                            <pre id="code-indicators"><code class="language-javascript"></code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Strategy File -->
+                    <div id="file-strategy" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 lib/strategy.js</h3>
+                            <p>Trading strategy logic with risk management and signal analysis</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-strategy">Copy</button>
+                            <pre id="code-strategy"><code class="language-javascript"></code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Storage File -->
+                    <div id="file-storage" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 lib/storage.js</h3>
+                            <p>Position tracking and trade history storage using file-based approach</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-storage">Copy</button>
+                            <pre id="code-storage"><code class="language-javascript"></code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Logger File -->
+                    <div id="file-logger" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 lib/logger.js</h3>
+                            <p>Comprehensive logging and error handling for debugging and monitoring</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-logger">Copy</button>
+                            <pre id="code-logger"><code class="language-javascript"></code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Package.json -->
+                    <div id="file-package" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 package.json</h3>
+                            <p>Project dependencies and scripts configuration</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-package">Copy</button>
+                            <pre id="code-package"><code class="language-json">{
+  "name": "serverless-trading-automation",
+  "version": "1.0.0",
+  "description": "JavaScript-based serverless trading bot with Yahoo Finance and Alpaca API",
+  "main": "api/trading.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel --prod",
+    "test": "node test/trading.test.js"
+  },
+  "dependencies": {
+    "yahoo-finance2": "^2.13.3",
+    "@alpacahq/alpaca-trade-api": "^3.0.0",
+    "trading-signals": "^3.6.1"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "trading",
+    "automation",
+    "serverless",
+    "vercel",
+    "alpaca",
+    "yahoo-finance"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}</code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Vercel Config -->
+                    <div id="file-vercel" class="file-content">
+                        <div class="file-header">
+                            <h3>📄 vercel.json</h3>
+                            <p>Vercel deployment configuration with environment variables and function settings</p>
+                        </div>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#code-vercel">Copy</button>
+                            <pre id="code-vercel"><code class="language-json"></code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Testing Tab -->
+            <section id="testing" class="tab-content">
+                <div class="section">
+                    <h2>🧪 Testing Interface</h2>
+                    
+                    <div class="testing-card">
+                        <h3>Local Development Testing</h3>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#test-local">Copy</button>
+                            <pre id="test-local"><code># Start local development server
+vercel dev
+
+# Test the trading endpoint
+curl http://localhost:3000/api/trading
+
+# Or use Thunder Client / Postman:
+# GET http://localhost:3000/api/trading</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="testing-card">
+                        <h3>Production Testing</h3>
+                        <div class="code-block">
+                            <button class="copy-btn" data-clipboard-target="#test-prod">Copy</button>
+                            <pre id="test-prod"><code># Test deployed function
+curl https://your-project.vercel.app/api/trading
+
+# Expected response:
+{
+  "success": true,
+  "action": "HOLD|BUY|SELL",
+  "data": {...},
+  "timestamp": "2024-10-06T01:00:00.000Z"
+}</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="testing-card">
+                        <h3>Manual Test Button</h3>
+                        <button class="btn btn--primary test-endpoint-btn">Test Trading Endpoint</button>
+                        <div class="test-result" id="test-result"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Deployment Tab -->
+            <section id="deployment" class="tab-content">
+                <div class="section">
+                    <h2>🚀 Deployment Guide</h2>
+                    
+                    <div class="deployment-steps">
+                        <div class="deployment-step">
+                            <h3>1. Initial Deployment</h3>
+                            <div class="code-block">
+                                <button class="copy-btn" data-clipboard-target="#deploy-initial">Copy</button>
+                                <pre id="deploy-initial"><code># Deploy to production
+vercel --prod
+
+# Verify deployment
+vercel ls</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="deployment-step">
+                            <h3>2. Environment Variables</h3>
+                            <div class="code-block">
+                                <button class="copy-btn" data-clipboard-target="#deploy-env">Copy</button>
+                                <pre id="deploy-env"><code># Set environment variables in Vercel
+vercel env add ALPACA_API_KEY_ID production
+vercel env add ALPACA_SECRET_KEY production
+vercel env add ALPACA_PAPER production
+vercel env add WEBHOOK_SECRET production
+
+# Redeploy with new environment variables
+vercel --prod</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="deployment-step">
+                            <h3>3. Domain Configuration</h3>
+                            <div class="code-block">
+                                <button class="copy-btn" data-clipboard-target="#deploy-domain">Copy</button>
+                                <pre id="deploy-domain"><code># Add custom domain (optional)
+vercel domains add your-domain.com
+
+# Update FastCron webhook URL to:
+# https://your-domain.com/api/trading</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Monitoring Tab -->
+            <section id="monitoring" class="tab-content">
+                <div class="section">
+                    <h2>📊 Monitoring Dashboard</h2>
+                    
+                    <div class="monitoring-grid">
+                        <div class="monitor-card">
+                            <h3>System Status</h3>
+                            <div class="status status--success">🟢 Operational</div>
+                        </div>
+                        
+                        <div class="monitor-card">
+                            <h3>Last Execution</h3>
+                            <div class="timestamp" id="last-execution">Not available</div>
+                        </div>
+                        
+                        <div class="monitor-card">
+                            <h3>Active Positions</h3>
+                            <div class="position-count" id="position-count">0</div>
+                        </div>
+                    </div>
+
+                    <div class="logs-section">
+                        <h3>Recent Logs</h3>
+                        <div class="logs-container">
+                            <div class="log-entry log-entry--info">
+                                <span class="log-timestamp">2024-10-06 01:00:00</span>
+                                <span class="log-message">Trading function triggered</span>
+                            </div>
+                            <div class="log-entry log-entry--info">
+                                <span class="log-timestamp">2024-10-06 01:00:01</span>
+                                <span class="log-message">Market data fetched for ZSP.TO</span>
+                            </div>
+                            <div class="log-entry log-entry--success">
+                                <span class="log-timestamp">2024-10-06 01:00:02</span>
+                                <span class="log-message">Analysis complete - Action: HOLD</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 Serverless Trading Automation. Built with Vercel, Yahoo Finance & Alpaca APIs.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
