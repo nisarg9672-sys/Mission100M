@@ -1,78 +1,111 @@
+// /api/trading.js
+import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
+import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
+import TechnicalIndicators from '../lib/indicators.js';
+import { createLogger } from '../lib/logger.js';
+import { randomUUID } from 'crypto';
 
-import yahooFinance from '../lib/yahooFinance.js';
-import alpaca from '../lib/alpaca.js';
-import indicators from '../lib/indicators.js';
-import strategy from '../lib/strategy.js';
-import storage from '../lib/storage.js';
-import logger from '../lib/logger.js';
+const logger = createLogger('Trading');
 
 export default async function handler(req, res) {
+  const requestId = randomUUID();
+  const startTime = Date.now();
+  logger.info('Request received', { requestId, method: req.method, url: req.url });
+
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Confirm, X-Request-Id');
+
+  if (req.method === 'OPTIONS') {
+    logger.info('Preflight request', { requestId });
+    return res.status(204).end();
+  }
+
   try {
-    logger.info('Trading function triggered');
+    logger.info('Trading function triggered', { requestId });
 
-    // Verify request (optional webhook validation)
-    if (process.env.WEBHOOK_SECRET) {
-      const receivedSecret = req.headers['x-webhook-secret'];
-      if (receivedSecret !== process.env.WEBHOOK_SECRET) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-    }
+    const { ticker = 'ZSP.TO', symbol = 'ZSP', action = 'analyze' } =
+      req.method === 'GET' ? req.query : req.body;
 
-    // Fetch market data for ZSP ETF
-    const symbol = 'ZSP.TO';
-    const marketData = await yahooFinance.getMarketData(symbol);
+    // Fetch Yahoo price
+    const yahooData = await getYahooPrice(ticker);
+    logger.info('Yahoo price fetched', { requestId, ticker: yahooData.ticker, price: yahooData.price });
 
-    if (!marketData) {
-      throw new Error('Failed to fetch market data');
-    }
+    // Fetch historical data
+    const historicalData = await getHistoricalData(ticker, '1mo');
+    logger.info('Historical data fetched', { requestId, count: historicalData.length });
 
-    // Calculate technical indicators
-    const technicalData = await indicators.calculate(marketData);
+    // Indicators & signals
+    const indicators = new TechnicalIndicators();
+    const technicals = indicators.calculate(historicalData);
+    const signals = indicators.generateSignals(technicals, yahooData.price);
+    logger.info('Technical analysis complete', { requestId, signals });
 
-    // Get current position
-    const currentPosition = await storage.getCurrentPosition(symbol);
-
-    // Execute trading strategy
-    const decision = strategy.analyze(technicalData, currentPosition);
-
-    if (decision.action !== 'HOLD') {
-      // Execute trade via Alpaca
-      const tradeResult = await alpaca.executeTrade({
-        symbol: 'ZSP', // Use the base symbol for Alpaca
-        action: decision.action,
-        quantity: decision.quantity,
-        takeProfitPercent: 10,
-        stopLossPercent: 5
-      });
-
-      // Update position tracking
-      await storage.updatePosition(symbol, tradeResult);
-
-      logger.info('Trade executed', { decision, tradeResult });
-
-      return res.status(200).json({
+    // Analysis-only response
+    if (action === 'analyze') {
+      const duration = Date.now() - startTime;
+      logger.info('Responding to analysis request', { requestId, durationMs: duration });
+      return res.json({
         success: true,
-        action: decision.action,
-        trade: tradeResult,
-        indicators: technicalData,
-        timestamp: new Date().toISOString()
+        requestId,
+        durationMs: duration,
+        data: { yahoo: yahooData, technicals, signals }
       });
     }
 
-    logger.info('No action taken - HOLD');
-    return res.status(200).json({
+    // Trade action
+    if (action === 'trade' && req.method === 'POST') {
+      const { side = 'buy', qty = 1, type = 'market', tif = 'day' } = req.body;
+      if (!['buy', 'sell'].includes(side.toLowerCase())) {
+        logger.warn('Invalid trade side', { requestId, side });
+        return res.status(400).json({ success: false, requestId, error: 'Invalid side' });
+      }
+
+      const orderParams = {
+        symbol: symbol.toUpperCase(),
+        side: side.toLowerCase(),
+        qty: parseInt(qty, 10),
+        type: type.toLowerCase(),
+        tif: tif.toLowerCase(),
+        confirm: req.headers.confirm === 'true'
+      };
+      logger.info('Placing order', { requestId, orderParams });
+
+      const orderResult = await placeAlpacaOrder(orderParams);
+      logger.info('Order result', { requestId, orderResult });
+
+      const duration = Date.now() - startTime;
+      return res.json({
+        success: true,
+        requestId,
+        durationMs: duration,
+        data: { yahoo: yahooData, signals, order: orderResult }
+      });
+    }
+
+    // Default analysis if action unrecognized
+    logger.warn('Unrecognized action, defaulting to analyze', { requestId, action });
+    const duration = Date.now() - startTime;
+    return res.json({
       success: true,
-      action: 'HOLD',
-      data: technicalData,
-      timestamp: new Date().toISOString()
+      requestId,
+      durationMs: duration,
+      data: { yahoo: yahooData, technicals, signals }
     });
 
   } catch (error) {
-    logger.error('Trading function error', error);
+    const duration = Date.now() - startTime;
+    logger.error('Trading function error', {
+      requestId,
+      message: error.message,
+      stack: error.stack,
+      durationMs: duration
+    });
     return res.status(500).json({
       success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
+      requestId,
+      error: error.message
     });
   }
 }
