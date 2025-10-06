@@ -189,32 +189,32 @@ class TradingAutomationApp {
   }
 
   simulateApiCall() {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          action: 'HOLD',
-          data: {
-            symbol: 'ZSP.TO',
-            currentPrice: 78.45,
-            previousClose: 78.12,
-            technicalIndicators: {
-              sma20: 77.89,
-              sma50: 76.45,
-              rsi: 52.3,
-              macd: 0.15
-            },
-            decision: {
-              action: 'HOLD',
-              reason: 'No strong technical signals detected',
-              confidence: 0.72
-            }
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        action: 'HOLD',
+        data: {
+          symbol: 'BTC-USD',
+          currentPrice: 67234.56,
+          previousClose: 66789.12,
+          technicalIndicators: {
+            sma20: 65432.89,
+            sma50: 63456.78,
+            rsi: 52.3,
+            macd: 127.45
           },
-          timestamp: new Date().toISOString()
-        });
-      }, 2000);
-    });
-  }
+          decision: {
+            action: 'HOLD',
+            reason: 'No strong technical signals detected',
+            confidence: 0.72
+          }
+        },
+        timestamp: new Date().toISOString()
+      });
+    }, 2000);
+  });
+}
 
   updateTimestamp() {
     const timestampElement = document.querySelector('#last-execution');

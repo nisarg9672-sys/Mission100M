@@ -47,7 +47,7 @@
                         </div>
                         <div class="feature-card">
                             <h3>📊 Market Data</h3>
-                            <p>Real-time data from Yahoo Finance API for ETF ticker ZSP analysis</p>
+                            <p>Real-time data from Yahoo Finance API for Bitcoin (BTC-USD) analysis</p>
                         </div>
                         <div class="feature-card">
                             <h3>🤖 Automated Trading</h3>
@@ -197,7 +197,7 @@ export default async function handler(req, res) {
     }
 
     // Fetch market data for ZSP ETF
-    const symbol = 'ZSP.TO';
+    const symbol = 'BTC-USD';
     const marketData = await yahooFinance.getMarketData(symbol);
     
     if (!marketData) {
