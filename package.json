@@ -1,0 +1,38 @@
+{
+  "name": "serverless-trading-automation",
+  "version": "1.0.0",
+  "description": "JavaScript-based serverless trading automation tool with Yahoo Finance and Alpaca API",
+  "main": "api/trading.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel --prod",
+    "test": "node test/test-trading.js",
+    "lint": "eslint .",
+    "start": "vercel dev"
+  },
+  "keywords": [
+    "trading",
+    "automation",
+    "serverless",
+    "yahoo-finance",
+    "alpaca",
+    "technical-analysis",
+    "vercel"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "yahoo-finance2": "^2.13.3",
+    "@alpacahq/alpaca-trade-api": "^3.0.0",
+    "trading-signals": "^3.6.1"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.0",
+    "eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
