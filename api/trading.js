@@ -1,10 +1,10 @@
 
-import yahooFinance from './lib/yahooFinance.js';
-import alpaca from './lib/alpaca.js';
-import indicators from './lib/indicators.js';
-import strategy from './lib/strategy.js';
-import storage from './lib/storage.js';
-import logger from './lib/logger.js';
+import yahooFinance from '../lib/yahooFinance.js';
+import alpaca from '../lib/alpaca.js';
+import indicators from '../lib/indicators.js';
+import strategy from '../lib/strategy.js';
+import storage from '../lib/storage.js';
+import logger from '../lib/logger.js';
 
 export default async function handler(req, res) {
   try {
