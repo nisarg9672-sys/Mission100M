@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "build": "vercel build",
+    "build": "echo 'Nothing to build'",
     "deploy": "vercel --prod",
     "test": "node test/test-trading.js",
     "lint": "eslint .",
