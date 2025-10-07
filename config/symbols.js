@@ -4,5 +4,5 @@ export default {
   yahoo: 'ETH-USD',
 
   // Symbol for Alpaca APIs (no hyphen)
-  alpaca: 'ETH/USD',
+  alpaca: 'ETHUSD',
 };
