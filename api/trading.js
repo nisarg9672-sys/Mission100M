@@ -1,4 +1,4 @@
-// api/trading.js – with position tracking integration
+// api/trading.js – Enhanced with comprehensive safety checks
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
@@ -33,12 +33,37 @@ export default async function handler(req, res) {
       ticker = yahooTicker,
       symbol = alpacaTicker,
       action = 'analyze',
-      autoTrade = true
+      autoTrade = true,
+      forceAction = false  // New parameter for manual override
     } = req.method === 'GET' ? req.query : req.body;
 
-    // Fetch current position from storage
+    // SAFETY CHECK: Cooldown period
+    const inCooldown = await storage.isInCooldown();
+    if (inCooldown && !forceAction) {
+      logger.info('System in cooldown period', { requestId });
+      return res.json({
+        success: true,
+        requestId,
+        message: 'System in cooldown period',
+        data: {
+          status: 'COOLDOWN',
+          message: 'Trading paused - cooldown period active',
+          autoTrade: 'disabled'
+        }
+      });
+    }
+
+    // Fetch current position and last trade from storage
     const currentPosition = await storage.getCurrentPosition(alpacaTicker);
-    logger.info('Current position loaded', { requestId, position: currentPosition });
+    const lastTrade = await storage.getLastTrade(alpacaTicker);
+    const allPositions = await storage.getAllPositions();
+    
+    logger.info('Position data loaded', { 
+      requestId, 
+      currentPosition, 
+      lastTrade,
+      allPositions: Object.keys(allPositions)
+    });
 
     // Fetch Yahoo price
     const yahooData = await getYahooPrice(ticker);
@@ -53,39 +78,47 @@ export default async function handler(req, res) {
     const technicals = indicators.calculate(historicalData);
     const signals = indicators.generateSignals(technicals, yahooData.price);
 
-    // Use strategy to make trading decision with real position data
+    // Use strategy to make trading decision with enhanced data
     const decision = strategy.analyze(
       {
         ...technicals,
         currentPrice: yahooData.price,
         signals: Object.values(signals).map(signal => ({ type: signal }))
       },
-      currentPosition
+      currentPosition,
+      lastTrade
     );
 
-    logger.info('=== DEBUG: Trading Analysis ===');
+    logger.info('=== COMPLETE TRADING ANALYSIS ===');
     logger.info('currentPosition:', JSON.stringify(currentPosition, null, 2));
-    logger.info('technicals:', JSON.stringify(technicals, null, 2));
+    logger.info('lastTrade:', JSON.stringify(lastTrade, null, 2));
+    logger.info('technicals summary:', {
+      rsi: technicals.rsi?.[technicals.rsi.length - 1]?.value,
+      sma: technicals.sma?.[technicals.sma.length - 1]?.value,
+      priceChange: ((yahooData.price - yahooData.price) / yahooData.price * 100).toFixed(2) + '%'
+    });
     logger.info('signals:', JSON.stringify(signals, null, 2));
     logger.info('decision:', JSON.stringify(decision, null, 2));
-    logger.info('=== END DEBUG ===');
+    logger.info('=== END ANALYSIS ===');
 
     // Auto-execute trades if enabled
     let orderResult = null;
     if (
       autoTrade &&
       decision &&
-      (decision.action === 'BUY' || decision.action === 'SELL')
+      (decision.action === 'BUY' || decision.action === 'SELL') &&
+      decision.confidence > 70
     ) {
       try {
         const orderParams = {
           symbol: alpacaTicker,
           side: decision.action.toLowerCase(),
-          qty: decision.quantity || 1,
+          qty: decision.quantity || 0.01,
           type: 'market',
           tif: 'gtc',
           confirm: req.headers.confirm === 'true' || req.query.confirm === 'true'
         };
+        
         logger.info('Auto-executing trade based on strategy', { requestId, orderParams, decision });
         orderResult = await placeAlpacaOrder(orderParams);
         
@@ -94,11 +127,11 @@ export default async function handler(req, res) {
           await storage.updatePosition(alpacaTicker, {
             symbol: alpacaTicker,
             action: decision.action,
-            quantity: decision.quantity || 1,
+            quantity: decision.quantity || 0.01,
             price: yahooData.price,
             orderId: orderResult.orderId
           });
-          logger.info('Position updated in storage', { requestId, orderResult });
+          logger.info('Position updated in storage after trade', { requestId, orderResult });
         }
         
         logger.info('Auto-trade result', { requestId, orderResult });
@@ -108,47 +141,66 @@ export default async function handler(req, res) {
       }
     }
 
-    // Analysis-only response (or analysis + trade result)
+    // Analysis response
     if (action === 'analyze') {
       const duration = Date.now() - startTime;
       logger.info('Responding to analysis request', { requestId, durationMs: duration });
-      return res.json({
+      
+      const responseData = {
         success: true,
         requestId,
         durationMs: duration,
         data: {
           yahoo: yahooData,
           position: currentPosition,
-          technicals,
+          lastTrade,
+          allPositions,
+          technicals: {
+            rsi: technicals.rsi?.[technicals.rsi.length - 1]?.value || null,
+            sma20: technicals.sma?.[technicals.sma.length - 1]?.value || null,
+            trend: 'NEUTRAL'  // Simplified for response
+          },
           signals,
           decision,
-          autoTrade: autoTrade
-            ? orderResult
-              ? 'executed'
-              : decision.action === 'HOLD'
-              ? 'hold_signal'
-              : 'no_confirmation'
-            : 'disabled',
-          order: orderResult
+          trading: {
+            autoTrade: autoTrade ? 
+              (orderResult ? 'executed' : 
+               decision.action === 'HOLD' ? 'holding' : 
+               'no_confirmation') : 'disabled',
+            inCooldown,
+            confidence: decision.confidence
+          },
+          order: orderResult,
+          safety: {
+            hasPosition: currentPosition ? true : false,
+            positionSize: currentPosition?.quantity || 0,
+            lastTradeTime: lastTrade?.timestamp || null,
+            cooldownActive: inCooldown
+          }
         }
-      });
+      };
+
+      return res.json(responseData);
     }
 
     // Manual trade action
     if (action === 'trade' && req.method === 'POST') {
-      const { side = 'buy', qty = 1, type = 'market', tif = 'gtc' } = req.body;
+      const { side = 'buy', qty = 0.01, type = 'market', tif = 'gtc' } = req.body;
+      
       if (!['buy', 'sell'].includes(side.toLowerCase())) {
         logger.warn('Invalid trade side', { requestId, side });
         return res.status(400).json({ success: false, requestId, error: 'Invalid side' });
       }
+      
       const orderParams = {
         symbol: alpacaTicker,
         side: side.toLowerCase(),
-        qty: parseInt(qty, 10),
+        qty: parseFloat(qty),
         type: type.toLowerCase(),
         tif: tif.toLowerCase(),
         confirm: req.headers.confirm === 'true'
       };
+      
       logger.info('Placing manual order', { requestId, orderParams });
       const manualOrderResult = await placeAlpacaOrder(orderParams);
       
@@ -157,7 +209,7 @@ export default async function handler(req, res) {
         await storage.updatePosition(alpacaTicker, {
           symbol: alpacaTicker,
           action: side.toUpperCase(),
-          quantity: parseInt(qty, 10),
+          quantity: parseFloat(qty),
           price: yahooData.price,
           orderId: manualOrderResult.orderId
         });
@@ -165,22 +217,39 @@ export default async function handler(req, res) {
       
       logger.info('Manual order result', { requestId, orderResult: manualOrderResult });
       const duration = Date.now() - startTime;
+      
       return res.json({
         success: true,
         requestId,
         durationMs: duration,
-        data: { yahoo: yahooData, position: currentPosition, signals, decision, order: manualOrderResult }
+        data: { 
+          yahoo: yahooData, 
+          position: await storage.getCurrentPosition(alpacaTicker),
+          signals, 
+          decision, 
+          order: manualOrderResult 
+        }
       });
     }
 
-    // Default analysis if action unrecognized
+    // Default analysis response
     logger.warn('Unrecognized action, defaulting to analyze', { requestId, action });
     const duration = Date.now() - startTime;
     return res.json({
       success: true,
       requestId,
       durationMs: duration,
-      data: { yahoo: yahooData, position: currentPosition, technicals, signals, decision }
+      data: { 
+        yahoo: yahooData, 
+        position: currentPosition, 
+        technicals, 
+        signals, 
+        decision,
+        safety: {
+          cooldownActive: inCooldown,
+          hasPosition: currentPosition ? true : false
+        }
+      }
     });
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -193,7 +262,11 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       requestId,
-      error: error.message
+      error: error.message,
+      debug: {
+        message: 'Check Vercel logs for detailed error information',
+        timestamp: new Date().toISOString()
+      }
     });
   }
 }
