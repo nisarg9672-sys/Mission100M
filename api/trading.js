@@ -49,6 +49,12 @@ export default async function handler(req, res) {
       signals: Object.values(signals).map(signal => ({ type: signal }))
     }, currentPosition);
 
+    logger.info('=== DEBUG: Raw technical data ===');
+    logger.info('technicals:', JSON.stringify(technicals, null, 2));
+    logger.info('signals:', JSON.stringify(signals, null, 2));
+    logger.info('yahooData.price:', yahooData.price);
+    logger.info('=== END DEBUG ===');
+
     logger.info('Strategy decision made', { requestId, decision });
 
     // Check if we should auto-execute trades based on strategy decision
