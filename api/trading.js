@@ -2,7 +2,7 @@
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
-import logger from '../lib/logger.js'; // Import default export (logger instance)
+import logger from '../lib/logger.js';
 import { randomUUID } from 'crypto';
 
 export default async function handler(req, res) {
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   try {
     logger.info('Trading function triggered', { requestId });
 
-    const { ticker = 'BTC-USD', symbol = 'BTC/USD', action = 'analyze' } =
+    const { ticker = 'BTC-USD', symbol = 'BTC/USD', action = 'analyze', autoTrade = true } =
       req.method === 'GET' ? req.query : req.body;
 
     // Fetch Yahoo price
@@ -42,7 +42,29 @@ export default async function handler(req, res) {
 
     logger.info('Technical analysis complete', { requestId, signals });
 
-    // Analysis-only response
+    // Check if we should auto-execute trades based on signals
+    let orderResult = null;
+    if (autoTrade && signals && (signals.action === 'BUY' || signals.action === 'SELL')) {
+      try {
+        const orderParams = {
+          symbol: 'BTC', // Use standard symbol for Alpaca
+          side: signals.action.toLowerCase(),
+          qty: signals.quantity || 1,
+          type: 'market',
+          tif: 'day',
+          confirm: req.headers.confirm === 'true' || req.query.confirm === 'true'
+        };
+
+        logger.info('Auto-executing trade based on signals', { requestId, orderParams });
+        orderResult = await placeAlpacaOrder(orderParams);
+        logger.info('Auto-trade result', { requestId, orderResult });
+      } catch (tradeError) {
+        logger.error('Auto-trade execution failed', { requestId, error: tradeError.message });
+        // Continue with analysis response even if trade fails
+      }
+    }
+
+    // Analysis-only response (or analysis + trade result)
     if (action === 'analyze') {
       const duration = Date.now() - startTime;
       logger.info('Responding to analysis request', { requestId, durationMs: duration });
@@ -51,11 +73,17 @@ export default async function handler(req, res) {
         success: true,
         requestId,
         durationMs: duration,
-        data: { yahoo: yahooData, technicals, signals }
+        data: { 
+          yahoo: yahooData, 
+          technicals, 
+          signals,
+          autoTrade: autoTrade ? (orderResult ? 'executed' : 'no_signal') : 'disabled',
+          order: orderResult
+        }
       });
     }
 
-    // Trade action
+    // Manual trade action
     if (action === 'trade' && req.method === 'POST') {
       const { side = 'buy', qty = 1, type = 'market', tif = 'day' } = req.body;
 
@@ -65,7 +93,7 @@ export default async function handler(req, res) {
       }
 
       const orderParams = {
-        symbol: symbol.toUpperCase(),
+        symbol: 'BTC',
         side: side.toLowerCase(),
         qty: parseInt(qty, 10),
         type: type.toLowerCase(),
@@ -73,17 +101,16 @@ export default async function handler(req, res) {
         confirm: req.headers.confirm === 'true'
       };
 
-      logger.info('Placing order', { requestId, orderParams });
-
-      const orderResult = await placeAlpacaOrder(orderParams);
-      logger.info('Order result', { requestId, orderResult });
+      logger.info('Placing manual order', { requestId, orderParams });
+      const manualOrderResult = await placeAlpacaOrder(orderParams);
+      logger.info('Manual order result', { requestId, orderResult: manualOrderResult });
 
       const duration = Date.now() - startTime;
       return res.json({
         success: true,
         requestId,
         durationMs: duration,
-        data: { yahoo: yahooData, signals, order: orderResult }
+        data: { yahoo: yahooData, signals, order: manualOrderResult }
       });
     }
 
