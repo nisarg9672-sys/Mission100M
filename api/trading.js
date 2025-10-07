@@ -5,6 +5,9 @@ import TechnicalIndicators from '../lib/indicators.js';
 import strategy from '../lib/strategy.js';
 import logger from '../lib/logger.js';
 import { randomUUID } from 'crypto';
+const symbols = require('../config/symbols');
+const yahooTicker = symbols.yahoo;
+const alpacaTicker = symbols.alpaca;
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -25,7 +28,7 @@ export default async function handler(req, res) {
   try {
     logger.info('Trading function triggered', { requestId });
 
-    const { ticker = 'BTC-USD', symbol = 'BTC/USD', action = 'analyze', autoTrade = true } =
+    const { ticker = yahooTicker, symbol = alpacaTicker, action = 'analyze', autoTrade = true } =
       req.method === 'GET' ? req.query : req.body;
 
     // Fetch Yahoo price
@@ -62,7 +65,7 @@ export default async function handler(req, res) {
     if (autoTrade && decision && (decision.action === 'BUY' || decision.action === 'SELL')) {
       try {
         const orderParams = {
-          symbol: 'BTC/USD',
+          symbol: alpacaTicker,
           side: decision.action.toLowerCase(),
           qty: decision.quantity || 1,
           type: 'market',
@@ -109,7 +112,7 @@ export default async function handler(req, res) {
       }
 
       const orderParams = {
-        symbol: 'BTC/USD',
+        symbol: alpacaTicker,
         side: side.toLowerCase(),
         qty: parseInt(qty, 10),
         type: type.toLowerCase(),
