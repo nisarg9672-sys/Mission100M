@@ -1,7 +1,8 @@
-// /api/trading.js
+// /api/trading.js - USING STRATEGY.JS VERSION
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
+import strategy from '../lib/strategy.js';
 import logger from '../lib/logger.js';
 import { randomUUID } from 'crypto';
 
@@ -40,22 +41,30 @@ export default async function handler(req, res) {
     const technicals = indicators.calculate(historicalData);
     const signals = indicators.generateSignals(technicals, yahooData.price);
 
-    logger.info('Technical analysis complete', { requestId, signals });
+    // Use strategy to make trading decision
+    const currentPosition = null; // You could fetch this from storage if needed
+    const decision = strategy.analyze({
+      ...technicals,
+      currentPrice: yahooData.price,
+      signals: Object.values(signals).map(signal => ({ type: signal }))
+    }, currentPosition);
 
-    // Check if we should auto-execute trades based on signals
+    logger.info('Strategy decision made', { requestId, decision });
+
+    // Check if we should auto-execute trades based on strategy decision
     let orderResult = null;
-    if (autoTrade && signals && (signals.action === 'BUY' || signals.action === 'SELL')) {
+    if (autoTrade && decision && (decision.action === 'BUY' || decision.action === 'SELL')) {
       try {
         const orderParams = {
-          symbol: 'BTC', // Use standard symbol for Alpaca
-          side: signals.action.toLowerCase(),
-          qty: signals.quantity || 1,
+          symbol: 'BTC',
+          side: decision.action.toLowerCase(),
+          qty: decision.quantity || 1,
           type: 'market',
           tif: 'day',
           confirm: req.headers.confirm === 'true' || req.query.confirm === 'true'
         };
 
-        logger.info('Auto-executing trade based on signals', { requestId, orderParams });
+        logger.info('Auto-executing trade based on strategy', { requestId, orderParams, decision });
         orderResult = await placeAlpacaOrder(orderParams);
         logger.info('Auto-trade result', { requestId, orderResult });
       } catch (tradeError) {
@@ -77,7 +86,8 @@ export default async function handler(req, res) {
           yahoo: yahooData, 
           technicals, 
           signals,
-          autoTrade: autoTrade ? (orderResult ? 'executed' : 'no_signal') : 'disabled',
+          decision,
+          autoTrade: autoTrade ? (orderResult ? 'executed' : decision.action === 'HOLD' ? 'hold_signal' : 'no_confirmation') : 'disabled',
           order: orderResult
         }
       });
@@ -110,7 +120,7 @@ export default async function handler(req, res) {
         success: true,
         requestId,
         durationMs: duration,
-        data: { yahoo: yahooData, signals, order: manualOrderResult }
+        data: { yahoo: yahooData, signals, decision, order: manualOrderResult }
       });
     }
 
@@ -121,7 +131,7 @@ export default async function handler(req, res) {
       success: true,
       requestId,
       durationMs: duration,
-      data: { yahoo: yahooData, technicals, signals }
+      data: { yahoo: yahooData, technicals, signals, decision }
     });
 
   } catch (error) {
