@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   try {
     logger.info('Trading function triggered', { requestId });
 
-    const { ticker = 'BTC-USD', symbol = 'BTC', action = 'analyze' } =
+    const { ticker = 'BTC-USD', symbol = 'BTC/USD', action = 'analyze' } =
       req.method === 'GET' ? req.query : req.body;
 
     // Fetch Yahoo price
