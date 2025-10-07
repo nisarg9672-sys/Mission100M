@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     if (autoTrade && decision && (decision.action === 'BUY' || decision.action === 'SELL')) {
       try {
         const orderParams = {
-          symbol: 'BTC',
+          symbol: 'BTC/USD',
           side: decision.action.toLowerCase(),
           qty: decision.quantity || 1,
           type: 'market',
@@ -109,7 +109,7 @@ export default async function handler(req, res) {
       }
 
       const orderParams = {
-        symbol: 'BTC',
+        symbol: 'BTC/USD',
         side: side.toLowerCase(),
         qty: parseInt(qty, 10),
         type: type.toLowerCase(),
