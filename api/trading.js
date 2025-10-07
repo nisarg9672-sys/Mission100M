@@ -1,5 +1,4 @@
 // api/trading.js – using strategy.js version
-
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
@@ -20,6 +19,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Confirm, X-Request-Id');
+
   if (req.method === 'OPTIONS') {
     logger.info('Preflight request', { requestId });
     return res.status(204).end();
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
           side: decision.action.toLowerCase(),
           qty: decision.quantity || 1,
           type: 'market',
-          tif: 'day',
+          tif: 'gtc',                        // Changed from 'day' to 'gtc'
           confirm: req.headers.confirm === 'true' || req.query.confirm === 'true'
         };
         logger.info('Auto-executing trade based on strategy', { requestId, orderParams, decision });
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
 
     // Manual trade action
     if (action === 'trade' && req.method === 'POST') {
-      const { side = 'buy', qty = 1, type = 'market', tif = 'day' } = req.body;
+      const { side = 'buy', qty = 1, type = 'market', tif = 'gtc' } = req.body;  // Default tif changed
       if (!['buy', 'sell'].includes(side.toLowerCase())) {
         logger.warn('Invalid trade side', { requestId, side });
         return res.status(400).json({ success: false, requestId, error: 'Invalid side' });
@@ -128,7 +128,7 @@ export default async function handler(req, res) {
         side: side.toLowerCase(),
         qty: parseInt(qty, 10),
         type: type.toLowerCase(),
-        tif: tif.toLowerCase(),
+        tif: tif.toLowerCase(),                   // Uses provided or default 'gtc'
         confirm: req.headers.confirm === 'true'
       };
       logger.info('Placing manual order', { requestId, orderParams });
