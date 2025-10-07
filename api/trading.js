@@ -1,4 +1,4 @@
-// api/trading.js – Enhanced with comprehensive safety checks
+// api/trading.js – Enhanced with more lenient safety checks
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
@@ -101,19 +101,19 @@ export default async function handler(req, res) {
     logger.info('decision:', JSON.stringify(decision, null, 2));
     logger.info('=== END ANALYSIS ===');
 
-    // Auto-execute trades if enabled
+    // Auto-execute trades if enabled (lowered confidence threshold from 70% to 60%)
     let orderResult = null;
     if (
       autoTrade &&
       decision &&
       (decision.action === 'BUY' || decision.action === 'SELL') &&
-      decision.confidence > 70
+      decision.confidence > 60  // Changed from 70 to 60
     ) {
       try {
         const orderParams = {
           symbol: alpacaTicker,
           side: decision.action.toLowerCase(),
-          qty: decision.quantity || 0.01,
+          qty: decision.quantity || 0.02,  // Increased default from 0.01 to 0.02
           type: 'market',
           tif: 'gtc',
           confirm: req.headers.confirm === 'true' || req.query.confirm === 'true'
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
           await storage.updatePosition(alpacaTicker, {
             symbol: alpacaTicker,
             action: decision.action,
-            quantity: decision.quantity || 0.01,
+            quantity: decision.quantity || 0.02,  // Increased default
             price: yahooData.price,
             orderId: orderResult.orderId
           });
@@ -166,14 +166,16 @@ export default async function handler(req, res) {
             autoTrade: autoTrade ? 
               (orderResult ? 'executed' : 
                decision.action === 'HOLD' ? 'holding' : 
-               'no_confirmation') : 'disabled',
+               'confidence_too_low') : 'disabled',  // Updated message
             inCooldown,
-            confidence: decision.confidence
+            confidence: decision.confidence,
+            minConfidenceRequired: 60  // Show the new threshold
           },
           order: orderResult,
           safety: {
             hasPosition: currentPosition ? true : false,
             positionSize: currentPosition?.quantity || 0,
+            maxPositionSize: 0.05,  // Updated max size
             lastTradeTime: lastTrade?.timestamp || null,
             cooldownActive: inCooldown
           }
@@ -185,7 +187,7 @@ export default async function handler(req, res) {
 
     // Manual trade action
     if (action === 'trade' && req.method === 'POST') {
-      const { side = 'buy', qty = 0.01, type = 'market', tif = 'gtc' } = req.body;
+      const { side = 'buy', qty = 0.02, type = 'market', tif = 'gtc' } = req.body;  // Increased default
       
       if (!['buy', 'sell'].includes(side.toLowerCase())) {
         logger.warn('Invalid trade side', { requestId, side });
@@ -247,7 +249,9 @@ export default async function handler(req, res) {
         decision,
         safety: {
           cooldownActive: inCooldown,
-          hasPosition: currentPosition ? true : false
+          hasPosition: currentPosition ? true : false,
+          minConfidenceRequired: 60,  // Show new threshold
+          maxPositionSize: 0.05       // Show new max size
         }
       }
     });
