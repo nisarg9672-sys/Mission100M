@@ -5,7 +5,7 @@ import TechnicalIndicators from '../lib/indicators.js';
 import strategy from '../lib/strategy.js';
 import logger from '../lib/logger.js';
 import { randomUUID } from 'crypto';
-const symbols = require('../config/symbols');
+import symbols from '../config/symbols';
 const yahooTicker = symbols.yahoo;
 const alpacaTicker = symbols.alpaca;
 
