@@ -1,4 +1,4 @@
-// api/trading.js – Enhanced with proper Google Sheets logging integration
+// api/trading.js – Fixed version with proper Google Sheets integration
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
@@ -15,22 +15,30 @@ export default async function handler(req, res) {
   const requestId = randomUUID();
   const startTime = Date.now();
   
-  logger.logRequest(requestId, req.method, req.url);
-
-  // CORS
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Confirm, X-Request-Id');
 
   if (req.method === 'OPTIONS') {
-    logger.info('Preflight request', { requestId });
     return res.status(204).end();
   }
 
   try {
-    // Validate Google Sheets configuration first
-    await validateGoogleSheetsConfig();
-    
+    logger.info('🚀 Trading API request started', { requestId, method: req.method });
+
+    // First, validate environment setup
+    const envCheck = validateEnvironment();
+    if (!envCheck.valid) {
+      return res.status(500).json({
+        success: false,
+        requestId,
+        error: 'Environment configuration error',
+        details: envCheck.errors,
+        message: 'Please check your environment variables setup'
+      });
+    }
+
     const {
       ticker = yahooTicker,
       symbol = alpacaTicker,
@@ -39,70 +47,60 @@ export default async function handler(req, res) {
       forceAction = false
     } = req.method === 'GET' ? req.query : req.body;
 
-    // Check Google Sheets storage health
+    // Test Google Sheets connection
+    logger.info('🔍 Checking Google Sheets connection...');
     const storageHealth = await storage.healthCheck();
-    logger.logStorageHealth(storageHealth);
-
+    
     if (storageHealth.status !== 'healthy') {
+      logger.error('❌ Google Sheets not available', storageHealth);
       return res.status(500).json({
         success: false,
         requestId,
-        error: 'Google Sheets storage is not available',
+        error: 'Google Sheets storage unavailable',
         details: storageHealth,
-        message: 'Check your Google Sheets configuration and environment variables'
+        message: 'Check Google Sheets configuration and permissions'
       });
     }
 
-    // SAFETY CHECK: Cooldown period
+    logger.info('✅ Google Sheets connection verified', {
+      title: storageHealth.spreadsheetTitle
+    });
+
+    // Check cooldown
     const inCooldown = await storage.isInCooldown();
-    logger.logCooldown(inCooldown);
-    
     if (inCooldown && !forceAction) {
+      logger.info('⏳ System in cooldown - skipping trade');
       return res.json({
         success: true,
         requestId,
         message: 'System in cooldown period',
-        data: {
-          status: 'COOLDOWN',
-          message: 'Trading paused - cooldown period active',
-          autoTrade: 'disabled'
-        }
+        data: { status: 'COOLDOWN', autoTrade: 'disabled' }
       });
     }
 
-    // Fetch current position and last trade from Google Sheets
+    // Load current positions from Google Sheets
+    logger.info('📊 Loading positions from Google Sheets...');
     const currentPosition = await storage.getCurrentPosition(alpacaTicker);
     const lastTrade = await storage.getLastTrade(alpacaTicker);
     const allPositions = await storage.getAllPositions();
     
-    logger.logPosition(alpacaTicker, currentPosition);
-    logger.info('Storage data loaded from Google Sheets', {   
-      requestId,   
-      hasCurrentPosition: currentPosition ? true : false,
-      hasLastTrade: lastTrade ? true : false,
+    logger.info('📋 Position data loaded', {
+      hasCurrentPosition: !!currentPosition,
+      hasLastTrade: !!lastTrade,
       totalPositions: Object.keys(allPositions).length
     });
 
-    // Fetch Yahoo price
+    // Fetch market data
+    logger.info('📈 Fetching market data...');
     const yahooData = await getYahooPrice(ticker);
-    logger.logMarketData(ticker, yahooData);
-
-    // Fetch historical data
     const historicalData = await getHistoricalData(ticker, '1mo');
-    logger.info('Historical data fetched', { requestId, count: historicalData.length });
 
-    // Calculate indicators & signals
+    // Calculate technical indicators
     const indicators = new TechnicalIndicators();
     const technicals = indicators.calculate(historicalData);
     const signals = indicators.generateSignals(technicals, yahooData.price);
-    
-    logger.logIndicators({
-      rsi: technicals.rsi?.[technicals.rsi.length - 1]?.value,
-      sma20: technicals.sma?.[technicals.sma.length - 1]?.value,
-      signals: Object.values(signals)
-    });
 
-    // Use strategy to make trading decision
+    // Make trading decision
     const decision = strategy.analyze(
       {
         ...technicals,
@@ -113,17 +111,22 @@ export default async function handler(req, res) {
       lastTrade
     );
 
-    logger.logDecision(decision);
+    logger.info('🎯 Trading decision made', {
+      action: decision.action,
+      confidence: decision.confidence
+    });
 
-    // Auto-execute trades if enabled
+    // Execute auto-trade if conditions are met
     let orderResult = null;
-    if (
-      autoTrade &&
-      decision &&
-      (decision.action === 'BUY' || decision.action === 'SELL') &&
-      decision.confidence > 60
-    ) {
+    const shouldAutoTrade = autoTrade && 
+                           decision && 
+                           (decision.action === 'BUY' || decision.action === 'SELL') && 
+                           decision.confidence > 60;
+
+    if (shouldAutoTrade) {
       try {
+        logger.info('🤖 Executing auto-trade...');
+        
         const orderParams = {
           symbol: alpacaTicker,
           side: decision.action.toLowerCase(),
@@ -133,12 +136,11 @@ export default async function handler(req, res) {
           confirm: req.headers.confirm === 'true' || req.query.confirm === 'true'
         };
 
-        logger.info('Auto-executing trade based on strategy', { requestId, orderParams, decision });
         orderResult = await placeAlpacaOrder(orderParams);
 
-        // Update position in Google Sheets after successful trade
+        // Log trade to Google Sheets if real order
         if (orderResult && orderResult.status !== 'simulated') {
-          const tradeResult = {
+          const tradeData = {
             id: `trade_${Date.now()}`,
             symbol: alpacaTicker,
             action: decision.action,
@@ -148,42 +150,44 @@ export default async function handler(req, res) {
             timestamp: new Date().toISOString()
           };
 
-          await storage.updatePosition(alpacaTicker, tradeResult);
-          logger.logTrade(tradeResult);
+          logger.info('📝 Logging trade to Google Sheets...');
+          await storage.updatePosition(alpacaTicker, tradeData);
+          logger.info('✅ Trade successfully logged to Google Sheets');
         }
 
       } catch (tradeError) {
-        logger.error('Auto-trade execution failed', tradeError);
-        // Continue with analysis response even if trade fails
+        logger.error('❌ Auto-trade execution failed', tradeError);
       }
     }
 
-    // Analysis response
+    // Prepare response
+    const duration = Date.now() - startTime;
+    
     if (action === 'analyze') {
-      const duration = Date.now() - startTime;
-      logger.logPerformance('Trading analysis', startTime, { requestId });
-
       const responseData = {
         success: true,
         requestId,
         durationMs: duration,
         data: {
-          yahoo: yahooData,
-          position: currentPosition,
-          lastTrade,
-          allPositions,
-          technicals: {
-            rsi: technicals.rsi?.[technicals.rsi.length - 1]?.value || null,
-            sma20: technicals.sma?.[technicals.sma.length - 1]?.value || null,
-            trend: 'NEUTRAL'
+          market: {
+            yahoo: yahooData,
+            technicals: {
+              rsi: technicals.rsi?.[technicals.rsi.length - 1]?.value || null,
+              sma20: technicals.sma?.[technicals.sma.length - 1]?.value || null,
+              trend: 'NEUTRAL'
+            },
+            signals
           },
-          signals,
+          positions: {
+            current: currentPosition,
+            lastTrade,
+            all: allPositions
+          },
           decision,
           trading: {
-            autoTrade: autoTrade ? 
-              (orderResult ? 'executed' : 
-              decision.action === 'HOLD' ? 'holding' : 
-              'confidence_too_low') : 'disabled',
+            autoTrade: shouldAutoTrade ? 
+              (orderResult ? 'executed' : 'failed') : 
+              (autoTrade ? 'no_signal' : 'disabled'),
             inCooldown,
             confidence: decision.confidence,
             minConfidenceRequired: 60
@@ -191,18 +195,8 @@ export default async function handler(req, res) {
           order: orderResult,
           storage: {
             status: storageHealth.status,
-            googleSheets: {
-              connected: storageHealth.status === 'healthy',
-              spreadsheetTitle: storageHealth.spreadsheetTitle || 'Unknown',
-              lastChecked: storageHealth.lastChecked
-            }
-          },
-          safety: {
-            hasPosition: currentPosition ? true : false,
-            positionSize: currentPosition?.quantity || 0,
-            maxPositionSize: 0.05,
-            lastTradeTime: lastTrade?.timestamp || null,
-            cooldownActive: inCooldown
+            connected: true,
+            spreadsheet: storageHealth.spreadsheetTitle
           }
         }
       };
@@ -210,13 +204,16 @@ export default async function handler(req, res) {
       return res.json(responseData);
     }
 
-    // Manual trade action
+    // Manual trade handling
     if (action === 'trade' && req.method === 'POST') {
       const { side = 'buy', qty = 0.02, type = 'market', tif = 'gtc' } = req.body;
 
       if (!['buy', 'sell'].includes(side.toLowerCase())) {
-        logger.warn('Invalid trade side', { requestId, side });
-        return res.status(400).json({ success: false, requestId, error: 'Invalid side' });
+        return res.status(400).json({ 
+          success: false, 
+          requestId, 
+          error: 'Invalid trade side - must be buy or sell' 
+        });
       }
 
       const orderParams = {
@@ -228,12 +225,12 @@ export default async function handler(req, res) {
         confirm: req.headers.confirm === 'true'
       };
 
-      logger.info('Placing manual order', { requestId, orderParams });
+      logger.info('📋 Placing manual order', orderParams);
       const manualOrderResult = await placeAlpacaOrder(orderParams);
 
-      // Update position in Google Sheets after manual trade
+      // Log manual trade to Google Sheets
       if (manualOrderResult && manualOrderResult.status !== 'simulated') {
-        const tradeResult = {
+        const tradeData = {
           id: `manual_${Date.now()}`,
           symbol: alpacaTicker,
           action: side.toUpperCase(),
@@ -243,91 +240,75 @@ export default async function handler(req, res) {
           timestamp: new Date().toISOString()
         };
 
-        await storage.updatePosition(alpacaTicker, tradeResult);
-        logger.logTrade(tradeResult);
+        await storage.updatePosition(alpacaTicker, tradeData);
+        logger.info('✅ Manual trade logged to Google Sheets');
       }
-
-      const duration = Date.now() - startTime;
-      logger.logPerformance('Manual trade', startTime, { requestId });
 
       return res.json({
         success: true,
         requestId,
-        durationMs: duration,
-        data: {   
-          yahoo: yahooData,   
+        durationMs: Date.now() - startTime,
+        data: {
+          market: { yahoo: yahooData },
           position: await storage.getCurrentPosition(alpacaTicker),
-          signals,   
-          decision,   
+          signals,
+          decision,
           order: manualOrderResult,
-          storage: {
-            status: 'healthy',
-            updated: true
-          }
+          storage: { status: 'updated' }
         }
       });
     }
 
-    // Default analysis response
-    logger.warn('Unrecognized action, defaulting to analyze', { requestId, action });
-    const duration = Date.now() - startTime;
-    
+    // Default response
     return res.json({
       success: true,
       requestId,
-      durationMs: duration,
-      data: {   
-        yahoo: yahooData,   
-        position: currentPosition,   
-        technicals,   
-        signals,   
+      durationMs: Date.now() - startTime,
+      data: {
+        market: { yahoo: yahooData },
+        position: currentPosition,
+        technicals,
+        signals,
         decision,
-        storage: {
-          status: storageHealth.status,
-          googleSheets: {
-            connected: storageHealth.status === 'healthy'
-          }
-        },
-        safety: {
-          cooldownActive: inCooldown,
-          hasPosition: currentPosition ? true : false,
-          minConfidenceRequired: 60,
-          maxPositionSize: 0.05
-        }
+        storage: { status: storageHealth.status }
       }
     });
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error('Trading function error', error);
+    logger.error('💥 Trading API error', error);
     
     return res.status(500).json({
       success: false,
       requestId,
+      durationMs: duration,
       error: error.message,
       debug: {
-        message: 'Check Vercel logs for detailed error information',
+        message: 'Check Vercel function logs for detailed error information',
         timestamp: new Date().toISOString(),
-        possibleCause: 'Google Sheets configuration or network connectivity issue'
+        hint: 'Verify Google Sheets setup and environment variables'
       }
     });
   }
 }
 
-// Helper function to validate Google Sheets configuration
-async function validateGoogleSheetsConfig() {
-  const requiredEnvVars = [
+function validateEnvironment() {
+  const required = [
+    'ALPACA_API_KEY_ID',
+    'ALPACA_SECRET_KEY', 
+    'ALPACA_PAPER',
     'GOOGLE_SERVICE_ACCOUNT_EMAIL',
-    'GOOGLE_PRIVATE_KEY', 
+    'GOOGLE_PRIVATE_KEY',
     'GOOGLE_SPREADSHEET_ID'
   ];
 
-  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  const missing = required.filter(key => !process.env[key]);
   
-  if (missingVars.length > 0) {
-    logger.logEnvironmentValidation(missingVars);
-    throw new Error(`Missing Google Sheets environment variables: ${missingVars.join(', ')}`);
-  }
-
-  logger.logEnvironmentValidation();
+  return {
+    valid: missing.length === 0,
+    errors: missing.length > 0 ? {
+      missingVariables: missing,
+      message: 'Add these environment variables in Vercel dashboard'
+    } : null
+  };
 }
