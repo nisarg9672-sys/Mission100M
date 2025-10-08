@@ -7,12 +7,12 @@
     }
   },
   "env": {
-    "ALPACA_API_KEY_ID": "@alpaca-api-key-id",
-    "ALPACA_SECRET_KEY": "@alpaca-secret-key", 
-    "ALPACA_PAPER": "@alpaca-paper",
-    "GOOGLE_SERVICE_ACCOUNT_EMAIL": "@google-service-account-email",
-    "GOOGLE_PRIVATE_KEY": "@google-private-key",
-    "GOOGLE_SPREADSHEET_ID": "@google-spreadsheet-id",
+    "ALPACA_API_KEY_ID": "@PKFAQKMHWBF879LZNSKC",
+    "ALPACA_SECRET_KEY": "@TyXUbvXycrGV2LI5TeB88rgGQfHm2HwbfshI9Z7o", 
+    "ALPACA_PAPER": "true",
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL": "mission100m-sheets-service@mission100m.iam.gserviceaccount.com",
+    "GOOGLE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----/n9c2a4f55f29324e5420a59b3346e287bda948f17.../n-----END PRIVATE KEY-----/n",
+    "GOOGLE_SPREADSHEET_ID": "@1-fgG3vpJD97kjlUlq-PY1Y6RIBXrncAnmbq8LosrrOA",
     "COOLDOWN_MINUTES": "15",
     "LOG_LEVEL": "info"
   },
