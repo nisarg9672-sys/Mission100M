@@ -7,17 +7,37 @@
     }
   },
   "env": {
-    "ALPACA_API_KEY_ID": "PKFAQKMHWBF879LZNSKC",
-    "ALPACA_SECRET_KEY": "TyXUbvXycrGV2LI5TeB88rgGQfHm2HwbfshI9Z7o",
-    "ALPACA_PAPER": "true"
-    
+    "ALPACA_API_KEY_ID": "@alpaca-api-key-id",
+    "ALPACA_SECRET_KEY": "@alpaca-secret-key", 
+    "ALPACA_PAPER": "@alpaca-paper",
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL": "@google-service-account-email",
+    "GOOGLE_PRIVATE_KEY": "@google-private-key",
+    "GOOGLE_SPREADSHEET_ID": "@google-spreadsheet-id",
+    "COOLDOWN_MINUTES": "15",
+    "LOG_LEVEL": "info"
   },
   "build": {
     "env": {
-      "ALPACA_API_KEY_ID": "PKFAQKMHWBF879LZNSKC",
-      "ALPACA_SECRET_KEY": "TyXUbvXycrGV2LI5TeB88rgGQfHm2HwbfshI9Z7o",
-      "ALPACA_PAPER": "true"
-      
+      "NODE_ENV": "production"
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods", 
+          "value": "GET, POST, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization, Confirm, X-Request-Id"
+        }
+      ]
+    }
+  ]
 }

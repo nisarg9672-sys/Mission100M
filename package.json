@@ -1,7 +1,7 @@
 {
   "name": "serverless-trading-automation",
   "version": "1.0.0",
-  "description": "JavaScript-based serverless trading automation tool with Yahoo Finance and Alpaca API",
+  "description": "JavaScript-based serverless trading automation tool with Yahoo Finance, Alpaca API, and Google Sheets logging",
   "main": "api/trading.js",
   "type": "module",
   "scripts": {
@@ -19,14 +19,16 @@
     "yahoo-finance",
     "alpaca",
     "technical-analysis",
-    "vercel"
+    "vercel",
+    "google-sheets"
   ],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "yahoo-finance2": "^2.13.3",
     "@alpacahq/alpaca-trade-api": "^3.0.0",
-    "trading-signals": "^3.6.1"
+    "trading-signals": "^3.6.1",
+    "googleapis": "^128.0.0"
   },
   "devDependencies": {
     "@vercel/node": "^3.0.0",
