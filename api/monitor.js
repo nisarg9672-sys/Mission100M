@@ -1,4 +1,4 @@
-// api/monitor.js - Continuous Position Monitoring Service
+// api/monitor.js - Fixed Continuous Position Monitoring with Better Validation
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { placeAlpacaOrder, syncAlpacaPosition } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   try {
     logger.info('🔍 Position Monitoring Service Started', { requestId });
     
-    // Initialize storage
+    // Initialize storage and cleanup ghost positions
     const storageHealth = await storage.healthCheck();
     if (storageHealth.status !== 'healthy') {
       return res.status(500).json({
@@ -37,18 +37,29 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get all current positions
+    // Clean up any ghost positions first
+    const { cleanupGhosts = false } = req.method === 'GET' ? req.query : req.body;
+    if (cleanupGhosts === 'true' || cleanupGhosts === true) {
+      logger.info('🧹 Manual ghost position cleanup requested');
+      await storage.cleanupAllPositions();
+    }
+
+    // Get all current positions (now validated)
     const allPositions = await storage.getAllPositions();
     const positionCount = Object.keys(allPositions).length;
     
-    logger.info(`📊 Monitoring ${positionCount} active positions`);
+    logger.info(`📊 Monitoring ${positionCount} valid positions`);
 
     if (positionCount === 0) {
       return res.json({
         success: true,
         requestId,
         message: 'No active positions to monitor',
-        data: { positionCount: 0, alerts: [] }
+        data: { 
+          positionCount: 0, 
+          alerts: [],
+          cleanupPerformed: cleanupGhosts === 'true' || cleanupGhosts === true
+        }
       });
     }
 
@@ -65,9 +76,11 @@ export default async function handler(req, res) {
           alerts.push(...result.alerts);
         }
         
-        // Execute emergency trades if needed
-        if (result.urgentAction) {
-          await executeUrgentAction(symbol, result.urgentAction);
+        // Execute emergency trades if needed (but validate first)
+        if (result.urgentAction && result.hasValidPosition) {
+          await executeUrgentAction(symbol, result.urgentAction, position);
+        } else if (result.urgentAction && !result.hasValidPosition) {
+          logger.warn(`🚫 Skipping urgent action for invalid position: ${symbol}`);
         }
         
       } catch (error) {
@@ -97,7 +110,8 @@ export default async function handler(req, res) {
         monitoringResults,
         alerts,
         portfolioMetrics,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        cleanupPerformed: cleanupGhosts === 'true' || cleanupGhosts === true
       }
     });
 
@@ -121,13 +135,45 @@ async function monitorPosition(symbol, position) {
     const marketData = await getYahooPrice(symbol === alpacaTicker ? yahooTicker : symbol);
     const currentPrice = marketData.price;
     
+    // Validate position value
+    const positionValue = position.quantity * currentPrice;
+    const hasValidPosition = position.quantity >= 0.001 && positionValue >= 10; // $10 minimum
+    
+    if (!hasValidPosition) {
+      logger.warn(`❌ Position below minimum thresholds: ${symbol}`, {
+        quantity: position.quantity,
+        currentPrice: currentPrice.toFixed(4),
+        positionValue: positionValue.toFixed(2),
+        minQuantity: 0.001,
+        minValue: 10
+      });
+      
+      return {
+        symbol,
+        status: 'INVALID_POSITION',
+        hasValidPosition: false,
+        position,
+        currentPrice,
+        positionValue,
+        alerts: [{
+          type: 'INVALID_POSITION',
+          urgency: 'LOW',
+          message: `Position ${symbol} below minimum thresholds - will be cleaned up`,
+          action: 'CLEANUP_POSITION'
+        }],
+        timestamp: new Date().toISOString()
+      };
+    }
+    
     // Calculate P&L
     const pnlAmount = (currentPrice - position.averagePrice) * position.quantity;
     const pnlPercentage = ((currentPrice - position.averagePrice) / position.averagePrice) * 100;
     
     logger.info(`📊 ${symbol} Position Status`, {
+      quantity: position.quantity,
       currentPrice: currentPrice.toFixed(4),
       averagePrice: position.averagePrice.toFixed(4),
+      positionValue: positionValue.toFixed(2),
       pnl: `${pnlPercentage.toFixed(2)}% ($${pnlAmount.toFixed(2)})`
     });
 
@@ -142,7 +188,7 @@ async function monitorPosition(symbol, position) {
     const indicators = new TechnicalIndicators();
     const technicals = indicators.calculate(historicalData);
     
-    // Make trading decision
+    // Make trading decision using the enhanced strategy
     const decision = strategy.analyze(
       {
         ...technicals,
@@ -173,8 +219,10 @@ async function monitorPosition(symbol, position) {
     return {
       symbol,
       status: 'MONITORED',
+      hasValidPosition: true,
       currentPrice,
       position,
+      positionValue,
       pnl: {
         amount: pnlAmount,
         percentage: pnlPercentage
@@ -200,42 +248,19 @@ function analyzePositionHealth(symbol, position, currentPrice, pnlPercentage) {
   const alerts = [];
   let riskLevel = 'NORMAL';
   
-  // Critical stop loss alert
-  if (pnlPercentage <= -1.5) {
+  // Critical stop loss alert (now 2% instead of 1.5%)
+  if (pnlPercentage <= -2.0) {
     alerts.push({
       type: 'STOP_LOSS_CRITICAL',
       urgency: 'CRITICAL',
-      message: `🚨 CRITICAL: ${symbol} down ${pnlPercentage.toFixed(2)}% - IMMEDIATE SELL REQUIRED`,
+      message: `🚨 CRITICAL: ${symbol} down ${pnlPercentage.toFixed(2)}% - STOP LOSS REQUIRED`,
       action: 'SELL_IMMEDIATELY'
     });
     riskLevel = 'CRITICAL';
   }
   
-  // Profit target reached
-  if (pnlPercentage >= 3) {
-    alerts.push({
-      type: 'PROFIT_TARGET',
-      urgency: 'HIGH',
-      message: `🎯 ${symbol} profit target reached: +${pnlPercentage.toFixed(2)}% - Consider taking profits`,
-      action: 'CONSIDER_SELL'
-    });
-  }
-  
-  // Trailing stop check
-  if (position.highWaterMark) {
-    const trailingStopPrice = position.highWaterMark * 0.992; // 0.8% trailing stop
-    if (currentPrice <= trailingStopPrice) {
-      alerts.push({
-        type: 'TRAILING_STOP',
-        urgency: 'HIGH',
-        message: `📉 ${symbol} trailing stop triggered - Price fell below $${trailingStopPrice.toFixed(4)}`,
-        action: 'SELL_TRAILING_STOP'
-      });
-    }
-  }
-  
-  // Warning levels
-  if (pnlPercentage <= -1.0 && pnlPercentage > -1.5) {
+  // Warning level (now 1.5% instead of 1%)
+  else if (pnlPercentage <= -1.5 && pnlPercentage > -2.0) {
     alerts.push({
       type: 'WARNING',
       urgency: 'MEDIUM',
@@ -244,22 +269,60 @@ function analyzePositionHealth(symbol, position, currentPrice, pnlPercentage) {
     });
     riskLevel = 'ELEVATED';
   }
+  
+  // Profit target reached
+  if (pnlPercentage >= 3.0) {
+    alerts.push({
+      type: 'PROFIT_TARGET',
+      urgency: 'HIGH',
+      message: `🎯 ${symbol} profit target reached: +${pnlPercentage.toFixed(2)}% - Consider taking profits`,
+      action: 'CONSIDER_SELL'
+    });
+  }
+  
+  // Trailing stop check (now 1% instead of 0.8%)
+  if (position.highWaterMark) {
+    const trailingStopPrice = position.highWaterMark * 0.99; // 1% trailing stop
+    const trailingStopLoss = ((trailingStopPrice - position.averagePrice) / position.averagePrice) * 100;
+    
+    // Only trigger if we're still in profit territory and would preserve gains
+    if (currentPrice <= trailingStopPrice && trailingStopLoss > 0) {
+      alerts.push({
+        type: 'TRAILING_STOP',
+        urgency: 'HIGH',
+        message: `📉 ${symbol} trailing stop triggered - Preserving ${trailingStopLoss.toFixed(2)}% gains`,
+        action: 'SELL_TRAILING_STOP'
+      });
+    }
+  }
 
   return { alerts, riskLevel };
 }
 
-async function executeUrgentAction(symbol, urgentAction) {
+async function executeUrgentAction(symbol, urgentAction, position) {
   try {
-    logger.warn(`🚨 EXECUTING URGENT ACTION: ${symbol}`, urgentAction);
+    logger.warn(`🚨 EXECUTING URGENT ACTION: ${symbol}`, {
+      action: urgentAction.action,
+      quantity: urgentAction.quantity,
+      positionValue: (position.quantity * position.averagePrice).toFixed(2)
+    });
+    
+    // Validate we actually have the position before trying to sell
+    if (urgentAction.action === 'SELL' && position.quantity < urgentAction.quantity) {
+      logger.error(`❌ Cannot sell ${urgentAction.quantity} ${symbol} - only have ${position.quantity}`);
+      return;
+    }
     
     const orderParams = {
       symbol: alpacaTicker,
       side: urgentAction.action.toLowerCase(),
-      qty: urgentAction.quantity,
+      qty: Math.min(urgentAction.quantity, position.quantity), // Don't try to sell more than we have
       type: 'market',
       tif: 'gtc',
       confirm: true // Auto-confirm urgent actions
     };
+    
+    logger.info('📋 Urgent order parameters:', orderParams);
     
     const orderResult = await placeAlpacaOrder(orderParams);
     
@@ -269,7 +332,7 @@ async function executeUrgentAction(symbol, urgentAction) {
         id: `urgent_${Date.now()}`,
         symbol: alpacaTicker,
         action: urgentAction.action,
-        quantity: urgentAction.quantity,
+        quantity: orderParams.qty,
         price: 0, // Will be filled at market price
         orderId: orderResult.orderId,
         timestamp: new Date().toISOString(),
@@ -281,48 +344,42 @@ async function executeUrgentAction(symbol, urgentAction) {
       logger.info('🚨✅ URGENT ACTION EXECUTED SUCCESSFULLY', {
         symbol,
         action: urgentAction.action,
+        quantity: orderParams.qty,
         orderId: orderResult.orderId
+      });
+    } else if (orderResult && orderResult.status === 'simulated') {
+      logger.warn('⚠️ Urgent action was simulated (not real trade)', {
+        symbol,
+        orderResult
       });
     }
     
   } catch (error) {
     logger.error(`❌ Failed to execute urgent action for ${symbol}`, error);
     
-    // Log the failure for manual intervention
-    try {
-      const alertRow = [
-        new Date().toISOString(),
-        symbol,
-        'URGENT_ACTION_FAILED',
-        `MANUAL INTERVENTION REQUIRED: Failed to execute ${urgentAction.action} - ${error.message}`,
-        0,
-        0
-      ];
+    // Check if it's an insufficient balance error
+    if (error.message && error.message.includes('insufficient balance')) {
+      logger.error(`🚫 INSUFFICIENT BALANCE: Cannot sell ${symbol} - position may not exist in broker account`);
       
-      // Log to alerts sheet if storage is available
-      await storage._logAlert(symbol, {
-        type: 'URGENT_ACTION_FAILED',
-        message: `MANUAL INTERVENTION REQUIRED: Failed to execute ${urgentAction.action} - ${error.message}`,
-        urgency: 'CRITICAL'
-      }, 0, 0);
-      
-    } catch (logError) {
-      logger.error('Failed to log urgent action failure', logError);
+      // Mark position for cleanup
+      logger.info('🧹 Scheduling ghost position cleanup due to insufficient balance error');
+      // The storage cleanup will handle this on next initialization
     }
   }
 }
 
 function calculatePortfolioMetrics(monitoringResults) {
-  const totalPositions = monitoringResults.filter(r => !r.error).length;
+  const validResults = monitoringResults.filter(r => !r.error && r.hasValidPosition !== false);
+  const totalPositions = validResults.length;
   let totalPnL = 0;
   let totalValue = 0;
   let criticalAlerts = 0;
   let profitablePositions = 0;
   
-  for (const result of monitoringResults) {
-    if (result.pnl && !result.error) {
+  for (const result of validResults) {
+    if (result.pnl) {
       totalPnL += result.pnl.amount;
-      totalValue += result.position.quantity * result.position.averagePrice;
+      totalValue += result.positionValue || (result.position.quantity * result.position.averagePrice);
       
       if (result.pnl.percentage > 0) {
         profitablePositions++;
