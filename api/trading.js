@@ -1,4 +1,4 @@
-// api/trading.js - Enhanced Professional Trading API with Active Position Management
+// api/trading.js - Enhanced Professional Trading API with NVDA Stock Trading
 import { getYahooPrice, getHistoricalData } from '../lib/yahooFinance.js';
 import { getAlpacaQuote, placeAlpacaOrder, syncAlpacaPosition } from '../lib/alpaca.js';
 import TechnicalIndicators from '../lib/indicators.js';
@@ -9,7 +9,9 @@ import { randomUUID } from 'crypto';
 import symbols from '../config/symbols.js';
 
 const yahooTicker = symbols.yahoo;
-const alpacaTicker = symbols.alpaca;
+const alpacaTicker = symbols.alpaca.primary;
+const buySignalTicker = symbols.alpaca.buySignal;   // NVDL
+const sellSignalTicker = symbols.alpaca.sellSignal; // NVD
 
 export default async function handler(req, res) {
   const requestId = randomUUID();
@@ -25,7 +27,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    logger.info('🚀 Enhanced Trading API request started', { requestId, method: req.method });
+    logger.info('🚀 Enhanced NVDA Trading API request started', { requestId, method: req.method });
     
     // Environment validation
     const envCheck = validateEnvironment();
@@ -60,7 +62,7 @@ export default async function handler(req, res) {
         details: storageHealth
       });
     }
-
+    
     logger.info('✅ Enhanced storage connection verified', {
       features: storageHealth.enhancedFeatures
     });
@@ -88,7 +90,6 @@ export default async function handler(req, res) {
     }
 
     const activePosition = syncedPosition || currentPosition;
-
     logger.info('📋 Enhanced position data loaded', {
       hasPosition: !!activePosition,
       positionQuantity: activePosition?.quantity || 0,
@@ -109,8 +110,8 @@ export default async function handler(req, res) {
         success: true,
         requestId,
         message: 'System in enhanced cooldown period (5 minutes)',
-        data: { 
-          status: 'COOLDOWN', 
+        data: {  
+          status: 'COOLDOWN',  
           autoTrade: 'disabled',
           position: activePosition,
           portfolioSummary: await getPortfolioSummary()
@@ -149,7 +150,7 @@ export default async function handler(req, res) {
       urgency: decision.urgency || 'NORMAL'
     });
 
-    // Enhanced auto-trading logic with urgency levels
+    // Enhanced auto-trading logic with new symbol mapping
     let orderResult = null;
     const shouldAutoTrade = autoTrade && 
       decision && 
@@ -160,48 +161,72 @@ export default async function handler(req, res) {
       try {
         logger.info('🤖 Executing enhanced auto-trade...', {
           urgency: decision.urgency,
-          confidence: decision.confidence
+          confidence: decision.confidence,
+          originalAction: decision.action
         });
 
-        const orderParams = {
-          symbol: alpacaTicker,
-          side: decision.action.toLowerCase(),
-          qty: decision.quantity || 0.02,
-          type: 'market',
-          tif: 'gtc',
-          // Auto-confirm for critical urgency or if confirm header is set
-          confirm: decision.urgency === 'CRITICAL' || 
-                  decision.urgency === 'IMMEDIATE' ||
-                  req.headers.confirm === 'true' || 
-                  req.query.confirm === 'true'
-        };
+        // Map the decision to the appropriate symbol and action
+        let targetSymbol, orderSide, rationale;
+        
+        if (decision.action === 'BUY') {
+          // Buy signal -> buy NVDL
+          targetSymbol = buySignalTicker;
+          orderSide = 'buy';
+          rationale = `Buy signal detected - purchasing ${buySignalTicker}`;
+        } else if (decision.action === 'SELL') {
+          // Sell signal -> buy NVD  
+          targetSymbol = sellSignalTicker;
+          orderSide = 'buy';
+          rationale = `Sell signal detected - purchasing ${sellSignalTicker}`;
+        }
+        // HOLD signals do nothing (no order placed)
 
-        orderResult = await placeAlpacaOrder(orderParams);
-
-        // Enhanced trade logging with reasoning
-        if (orderResult && orderResult.status !== 'simulated') {
-          const tradeData = {
-            id: `enhanced_${Date.now()}`,
-            symbol: alpacaTicker,
-            action: decision.action,
-            quantity: decision.quantity || 0.02,
-            price: yahooData.price,
-            orderId: orderResult.orderId,
-            timestamp: new Date().toISOString(),
-            reasoning: decision.reasoning,
-            confidence: decision.confidence,
-            urgency: decision.urgency
+        if (targetSymbol && orderSide) {
+          const orderParams = {
+            symbol: targetSymbol,
+            side: orderSide,
+            qty: decision.quantity || 10, // Default to 10 shares for stocks
+            type: 'market',
+            tif: 'gtc',
+            // Auto-confirm for critical urgency or if confirm header is set
+            confirm: decision.urgency === 'CRITICAL' || 
+              decision.urgency === 'IMMEDIATE' ||
+              req.headers.confirm === 'true' || 
+              req.query.confirm === 'true'
           };
 
-          logger.info('📝 Logging enhanced trade...');
-          await storage.updatePosition(alpacaTicker, tradeData);
-          
-          // Trigger immediate monitoring for the updated position
-          if (decision.action === 'BUY') {
-            logger.info('🔍 Initiating position monitoring for new buy order');
+          logger.info('📋 Placing order', {
+            originalSignal: decision.action,
+            targetSymbol,
+            orderSide,
+            quantity: orderParams.qty
+          });
+
+          orderResult = await placeAlpacaOrder(orderParams);
+
+          // Enhanced trade logging with reasoning
+          if (orderResult && orderResult.status !== 'simulated') {
+            const tradeData = {
+              id: `enhanced_${Date.now()}`,
+              originalSignal: decision.action,  // BUY or SELL signal
+              targetSymbol: targetSymbol,       // NVDL or NVD
+              actualAction: orderSide,          // Always 'buy' for our strategy
+              quantity: decision.quantity || 10,
+              price: yahooData.price,           // NVDA price for reference
+              orderId: orderResult.orderId,
+              timestamp: new Date().toISOString(),
+              reasoning: [rationale, ...decision.reasoning],
+              confidence: decision.confidence,
+              urgency: decision.urgency
+            };
+
+            logger.info('📝 Logging enhanced trade...');
+            await storage.updatePosition(targetSymbol, tradeData);
+            
+            logger.info('✅ Enhanced trade successfully logged');
           }
-          
-          logger.info('✅ Enhanced trade successfully logged');
+        } else {
+          logger.info('✋ HOLD signal - no order placed');
         }
 
       } catch (tradeError) {
@@ -247,6 +272,12 @@ export default async function handler(req, res) {
           },
           decision: {
             ...decision,
+            mappingInfo: {
+              originalSignal: decision.action,
+              targetSymbol: decision.action === 'BUY' ? buySignalTicker : 
+                           decision.action === 'SELL' ? sellSignalTicker : null,
+              actualAction: decision.action === 'HOLD' ? null : 'buy'
+            },
             professionalAnalysis: generateProfessionalAnalysis(decision, activePosition, yahooData.price)
           },
           trading: {
@@ -269,7 +300,7 @@ export default async function handler(req, res) {
           recommendations: generateTradingRecommendations(decision, activePosition, riskAssessment)
         }
       };
-
+      
       return res.json(responseData);
     }
 
@@ -317,7 +348,7 @@ export default async function handler(req, res) {
 
 // Enhanced manual trading handler
 async function handleManualTrade(req, res, yahooData, requestId, startTime) {
-  const { side = 'buy', qty = 0.02, type = 'market', tif = 'gtc' } = req.body;
+  const { side = 'buy', qty = 10, type = 'market', tif = 'gtc', symbol } = req.body;
   
   if (!['buy', 'sell'].includes(side.toLowerCase())) {
     return res.status(400).json({
@@ -327,8 +358,11 @@ async function handleManualTrade(req, res, yahooData, requestId, startTime) {
     });
   }
 
+  // For manual trades, use the symbol provided or default to primary
+  const targetSymbol = symbol || alpacaTicker;
+
   const orderParams = {
-    symbol: alpacaTicker,
+    symbol: targetSymbol,
     side: side.toLowerCase(),
     qty: parseFloat(qty),
     type: type.toLowerCase(),
@@ -343,8 +377,9 @@ async function handleManualTrade(req, res, yahooData, requestId, startTime) {
   if (manualOrderResult && manualOrderResult.status !== 'simulated') {
     const tradeData = {
       id: `manual_enhanced_${Date.now()}`,
-      symbol: alpacaTicker,
-      action: side.toUpperCase(),
+      originalSignal: 'MANUAL',
+      targetSymbol: targetSymbol,
+      actualAction: side.toUpperCase(),
       quantity: parseFloat(qty),
       price: yahooData.price,
       orderId: manualOrderResult.orderId,
@@ -353,7 +388,7 @@ async function handleManualTrade(req, res, yahooData, requestId, startTime) {
       type: 'MANUAL'
     };
 
-    await storage.updatePosition(alpacaTicker, tradeData);
+    await storage.updatePosition(targetSymbol, tradeData);
     logger.info('✅ Enhanced manual trade logged');
   }
 
@@ -363,7 +398,7 @@ async function handleManualTrade(req, res, yahooData, requestId, startTime) {
     durationMs: Date.now() - startTime,
     data: {
       market: { yahoo: yahooData },
-      position: await storage.getCurrentPosition(alpacaTicker),
+      position: await storage.getCurrentPosition(targetSymbol),
       order: manualOrderResult,
       portfolio: await getPortfolioSummary(),
       storage: { status: 'updated', enhanced: true }
@@ -507,18 +542,18 @@ function generateTradingRecommendations(decision, position, riskAssessment) {
   const recommendations = [];
   
   if (decision.action === 'BUY' && !position) {
-    recommendations.push('Entry signal detected - consider opening position');
+    recommendations.push(`Entry signal detected - will purchase ${buySignalTicker}`);
     recommendations.push('Set stop loss at 1.5% below entry price');
     recommendations.push('Target 3% profit for exit');
   }
   
-  if (decision.action === 'SELL' && position) {
-    recommendations.push('Exit signal detected - consider closing position');
-    recommendations.push('Review stop loss and take profit levels');
+  if (decision.action === 'SELL' && !position) {
+    recommendations.push(`Sell signal detected - will purchase ${sellSignalTicker}`);
+    recommendations.push('Monitor inverse position performance');
   }
   
   if (decision.action === 'HOLD') {
-    recommendations.push('No clear signal - maintain current position');
+    recommendations.push('No clear signal - maintaining current position');
     recommendations.push('Continue monitoring for changes in momentum');
   }
   
